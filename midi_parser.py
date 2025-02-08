@@ -64,16 +64,21 @@ def midi_note_number_to_freq(note_num: int):
     # https://www.music.mcgill.ca/~gary/307/week1/node28.html
     return 440 * 2**((note_num - 69)/12)
 
-def parse_midi_file(file_path_name: str, target_track: str, target_type: str):
+def parse_midi_file(file_path_name: str, target_track: int):
     # Open a MIDI file
     mid = mido.MidiFile(file_path_name)
 
+    ticks_per_beat = mid.ticks_per_beat
+
     print(file_path_name)
     print(f"length: {mid.length}")
+    print(f"ticks per beat {ticks_per_beat}")
 
     frequencies = []
     delta_ts = []
 
+    # if 8, then 8 32nd notes per beat, ie, one quarter note per beat
+    # if this with 24 clocks per click, then 24 clocks per quarter note
     notated_32nd_notes_per_beat = None
     # time signature numerator
     numerator = None
@@ -99,28 +104,61 @@ def parse_midi_file(file_path_name: str, target_track: str, target_type: str):
 
     print(tempo, numerator, denominator, clocks_per_click, notated_32nd_notes_per_beat)
 
-    # 8 for beat length means each beat has a length of an eighth note
-    clocks_per_quarter_note_scaler = 4 / denominator
+    #  1 / (microseconds/quarter note) * 1 second / 1,000,000 microseconds * 1 minute / 60 seconds = quarter note / minute
+    bpm = 60 / (tempo / (1000 * 1000))
+    bps = bpm / 60
 
-    milliseconds_per_tick = clocks_per_click * clocks_per_quarter_note_scaler * (tempo / 1000)
+    print(f"bpm: {bpm}")
 
-    # Iterate over tracks
+    mido_bpm = mido.tempo2bpm(tempo, time_signature=(numerator, denominator))
+    print(f"mido bpm: {mido_bpm}")
+
+    mido_ticks_to_second = mido.tick2second(1, ticks_per_beat=ticks_per_beat, tempo=tempo)
+    mido_ticks_to_millisecond = mido_ticks_to_second * 1000
+
+    # beats / second  * ticks / beat = ticks / second
+    # ticks / second * 1 second / 1000 milliseconds = ticks / millisecond
+
+    milliseconds_per_tick = 1 / (bps * ticks_per_beat / 1000)
+    print(f"milliseconds per tick {milliseconds_per_tick}")
+    print(f"mido: milliseconds per tick {mido_ticks_to_millisecond}")
+
+    min_note = 255
+    max_note = -1
+
     for i, track in enumerate(mid.tracks):
-        if track.name != target_track:
+        if i != target_track:
             continue
 
         # Iterate over messages in the track
-        for msg in track:
-            if msg.type != target_type:
+        on_off_msgs = []
+        for j in range(len(track)):
+            msg = track[j]
+            if msg.type not in ["note_on", "note_off"]:
                 continue
-            # time is delta timea
-            # velocity is how fast note is struck
-            # note is note number, maps to some notes
-            if msg.time != 0:
-                frequencies.append(int(midi_note_number_to_freq(msg.note)))
-                delta_ts.append(msg.time * milliseconds_per_tick)
+            # if msg.time == 0:
+            #     continue
+            on_off_msgs.append(msg)
+        for j in range(len(on_off_msgs)):
+            msg = on_off_msgs[j]
+            freq = None
+            if msg.type == "note_on":
+                note_num = msg.note
+                if note_num < min_note:
+                    min_note = note_num
+                if note_num > max_note:
+                    max_note = note_num
+                freq = int(midi_note_number_to_freq(note_num))
+            else:
+                freq = 0
+            ticks = None
+            ticks = msg.time
+            delta_t = int(ticks * milliseconds_per_tick)
+            delta_ts.append(delta_t)
+            frequencies.append(freq)
     
     print(f"parsed song duration seconds: {sum(delta_ts)/1000}")
+    print(f"min note num: {min_note}, max note num: {max_note}")
     parsed_song = ParsedSong(frequencies=frequencies, delta_times=delta_ts)
 
     return parsed_song
@@ -142,38 +180,20 @@ def play_song(serial_port: str, baudrate: int, song: ParsedSong):
     for i in range(num_steps):
         step = song.get_step(i)
         step_bytes = step.to_bytes()
-        print(step.freq)
-        print(step.delta_t)
-        # print(step_bytes)
-
+        time.sleep(step.delta_t/1000)
+        print(f"freq: {step.freq}, delta_t: {step.delta_t}")
         ser.write(step_bytes)
 
-        # for byte in step_bytes:
-        #     # print(byte)
-        #     # print(type(byte))
-        #     ser.write(byte.to_bytes(1, "big"))
-        
-        # freq_bytes = ser.read(4)
-        # delta_t_bytes = ser.read(4)
+        if ser.in_waiting > 0:
+            line = ser.readline()
+            print(f"robo_msg: {line.decode()}")
 
-        # # print(freq_bytes)
-        # # print(delta_t_bytes)
-        # freq = int.from_bytes(freq_bytes, byteorder='big')
-        # delta_t = int.from_bytes(delta_t_bytes, byteorder='big')
-        # print(freq)
-        # print(delta_t)
 
-        time.sleep(step.delta_t/1000)
 
     ser.close()
 
 
 
 if __name__ == "__main__":
-    song = parse_midi_file(SONGS_PATHS[0], "Treble", "note_on")
-
-    step = song.get_step(0)
-    print(step)
-    print(step.to_bytes())
-
+    song = parse_midi_file(SONGS_PATHS[0], 1)
     play_song("COM12", 9600, song)

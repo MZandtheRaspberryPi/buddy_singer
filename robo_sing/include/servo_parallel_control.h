@@ -1,5 +1,15 @@
 #include <Servo.h> 
 
+const uint8_t NOD_MIN = 80;
+const uint8_t NOD_MAX = 150;
+const uint8_t NOD_MIDDLE = NOD_MIN + (NOD_MAX - NOD_MIN) / 2;
+const uint8_t BASE_MIN = 10;
+const uint8_t BASE_MAX = 170;
+const uint8_t BASE_MIDDLE = BASE_MIN + (BASE_MAX - BASE_MIN) / 2;
+const uint8_t TILT_MIN = 50;
+const uint8_t TILT_MAX = 120;
+const uint8_t TILT_MIDDLE = TILT_MIN + (TILT_MAX - TILT_MIN) / 2;
+
 // Robot Joint Motion Stuctures
 struct HeadPos {
   int baseServoAngle;
@@ -37,9 +47,9 @@ int servoParallelControl (int pos, Servo& servo, int speed ) {
 
 void moveTo(struct HeadPos& faceMotion, Servo& baseServo, Servo& nodServo, Servo& tiltServo) {
 
-  faceMotion.baseServoAngle = constrain(faceMotion.baseServoAngle, 10, 170);
-  faceMotion.tiltServoAngle = constrain(faceMotion.tiltServoAngle, 50, 120);
-  faceMotion.nodServoAngle = constrain(faceMotion.nodServoAngle, 80, 150);
+  faceMotion.baseServoAngle = constrain(faceMotion.baseServoAngle, BASE_MIN, BASE_MAX);
+  faceMotion.tiltServoAngle = constrain(faceMotion.tiltServoAngle, TILT_MIN, TILT_MAX);
+  faceMotion.nodServoAngle = constrain(faceMotion.nodServoAngle, NOD_MIN, NOD_MAX);
 
   int status1 = 0;
   int status2 = 0;

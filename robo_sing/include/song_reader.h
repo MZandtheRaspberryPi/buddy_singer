@@ -1,4 +1,3 @@
-//This Function Generates a Random series as beeps in order to create speech
 void droidSpeak (int soundPin, uint8_t wordCount) {
   int toneDuration;
   int toneFreq;     // frequency of tone created
